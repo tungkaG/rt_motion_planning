@@ -1,0 +1,5 @@
+wie TrajectorySamppleData generieren? wo ist die Datei vor der Codegenerierung
+
+in communicaion cpp:
+wie kommst du auf dei get_msgs fct in communication.cpp? irgendwelche docs die hilft?
+wie configuriert man die Netywerkeinstellungen? wo findet man z.B. CONFIG_NET_IFACE1_GW
