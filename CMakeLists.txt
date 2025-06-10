@@ -54,7 +54,10 @@ set(CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/install -DCMAK
 
 add_subdirectory(src/cost_functions)
 add_subdirectory(src/feasibility_functions)
+add_subdirectory(src/third_party/crdc)
+add_subdirectory(src/trajectory_handler)
 add_subdirectory(src/trajectory_sample)
+add_subdirectory(src/input_data)
 
 target_sources(app PRIVATE
   msg/CartesianSampleData.c
@@ -62,7 +65,6 @@ target_sources(app PRIVATE
   msg/TrajectorySampleData.c
   msg/ResultData.c
   src/communication.cpp
-  src/TrajectoryEvaluator.cpp
 )
 
 target_include_directories(app PRIVATE
@@ -80,4 +82,6 @@ target_link_libraries(app PRIVATE
   cost_functions
   feasibility_functions
   trajectory_sample
+  trajectory_handler
+  input_data
 )

@@ -1,0 +1,3 @@
+1ST POC: copy rafael code and change input/output msgs
+modify Input data, communication, msg
+CMakeLists of everything

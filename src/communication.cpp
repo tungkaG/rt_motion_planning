@@ -9,16 +9,20 @@
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/ethernet.h>
 #include <Eigen/Core>
-#include "TrajectorySample.hpp"
-#include "CartesianSample.hpp"
-#include "CurvilinearSample.hpp"
-#include "TrajectorySampleData.h"
-#include "CartesianSampleData.h"
-#include "CurvilinearSampleData.h"
+// #include "TrajectorySample.hpp"
+// #include "CartesianSample.hpp"
+// #include "CurvilinearSample.hpp"
+#include "InputData.h"
+// #include "CartesianSampleData.h"
+// #include "CurvilinearSampleData.h"
 #include "ResultData.h"
-#include "TrajectoryEvaluator.hpp"
+// #include "TrajectoryEvaluator.hpp"
 #include <dds/ddsi/ddsi_config.h>
 #include "zephyr_app.hpp"
+
+#include "TrajectoryHandler.hpp"
+#include "CoordinateSystemWrapper.hpp"
+#include "FillCoordinates.hpp"
 
 
 #define ACTUATION_STACK_SIZE 16 * 1024
@@ -32,8 +36,7 @@ static K_SEM_DEFINE(got_address, 0, 1);
 static struct net_mgmt_event_callback mgmt_cb;
 #endif  // CONFIG_NET_DHCPV4
 
-using TrajectorySampleData = custom_trajectory_msgs_msg_TrajectorySampleData;
-using XClData = custom_trajectory_msgs_msg_XClData;
+using InputData = custom_trajectory_msgs_msg_InputData;
 
 using SamplingMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, 13, Eigen::RowMajor>;
 using RowMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
@@ -48,6 +51,8 @@ double sampling_time[num_samples_time + 1]; // +1 in case t is not present and n
 static int actual_t_samples = 0;
 static double N = 30; //  self.N = int(config_plan.planning.planning_horizon / config_plan.planning.dt)
 static double dT = 0.1;
+
+std::shared_ptr<CoordinateSystemWrapper> coordinate_system;
 
 SamplingMatrixXd generate_sampling_matrix_cstyle(
     double* t0_range, size_t t0_size,
@@ -210,7 +215,7 @@ Eigen::VectorXd ddsSequenceToVector(const dds_sequence_double& sequence) {
 
 dds_entity_t result_writer;
 
-void on_msg(const XClData& msg) {
+void on_msg(const InputData& msg) {
   static double vehicle_a_max = 11.5;
   static double horizon = 3.0;
   static double vehicle_v_max = 50.8;
@@ -271,41 +276,6 @@ void on_msg(const XClData& msg) {
     sampling_time[actual_t_samples] = N*dT;
   }
 
-  // CartesianSample cartesianSample(
-  //     m_cartesianSample_x,
-  //     m_cartesianSample_y,
-  //     m_cartesianSample_theta,
-  //     m_cartesianSample_velocity,
-  //     m_cartesianSample_acceleration,
-  //     m_cartesianSample_kappa,
-  //     m_cartesianSample_kappaDotä
-  // );
-
-  // CurviLinearSample curvilinearSample(
-  //     m_curvilinearSample_s,
-  //     m_curvilinearSample_d,
-  //     m_curvilinearSample_theta,
-  //     m_curvilinearSample_dd,
-  //     m_curvilinearSample_ddd,
-  //     m_curvilinearSample_ss,
-  //     m_curvilinearSample_sss
-  // );
-
-  // TrajectorySample trajectory_sample(
-  //     cartesianSample,
-  //     curvilinearSample,
-  //     m_size,
-  //     m_actualSize,
-  //     m_dT
-  // );
-
-  // TrajectoryEvaluator trajectory_evaluator;
-  // trajectory_evaluator.evaluateTrajectory(trajectory_sample);
-  // custom_trajectory_msgs_msg_ResultData result_msg;
-  // result_msg.m_cost = trajectory_sample.m_cost;
-  // result_msg.m_feasible = trajectory_sample.m_feasible;
-  // dds_write(result_writer, &result_msg);
-
   size_t t0_size = 1;
   size_t t1_size = actual_t_samples;
   size_t s0_size = 1;
@@ -331,13 +301,7 @@ void on_msg(const XClData& msg) {
   double dd1_range[1] = {0.0};
   double ddd1_range[1] = {0.0};
 
-  size_t total_combinations = t0_size * t1_size * s0_size * ss0_size * sss0_size *
-                            ss1_size * sss1_size * d0_size * dd0_size * ddd0_size *
-                            d1_size * dd1_size * ddd1_size;
-
-  double sampling_matrix[total_combinations][13] = {0}; // All elements initialized to 0
-
-  generate_sampling_matrix_cstyle(
+  SamplingMatrixXd sampling_matrix = generate_sampling_matrix_cstyle(
       t0_range, t0_size,
       sampling_time, t1_size,
       s0_range, s0_size,
@@ -350,17 +314,25 @@ void on_msg(const XClData& msg) {
       ddd0_range, ddd0_size,
       sampling_d, d1_size,
       dd1_range, dd1_size,
-      ddd1_range, ddd1_size,
-      sampling_matrix
+      ddd1_range, ddd1_size
   );
 
-  // Print the sampling matrix
-  std::cout << "Sampling Matrix:" << std::endl;
-  for (size_t i = 0; i < total_combinations; ++i) {
-      for (size_t j = 0; j < 13; ++j) {
-          std::cout << sampling_matrix[i][j] << " ";
-      }
-      std::cout << std::endl;
+  TrajectoryHandler trajectory_handler(0.1, desired_velocity);
+
+  trajectory_handler.addFillCoordinates(std::make_unique<FillCoordinates>(false, orientation, coordinate_system, 3.0));
+
+  trajectory_handler.generateTrajectories(sampling_matrix, false);
+    
+  // trajectory_handler.evaluateTrajectory(trajectory_handler.m_trajectories[0]);
+
+  trajectory_handler.evaluateAllTrajectories();
+
+  for (const auto& trajectory : trajectory_handler.m_trajectories) {
+    printf("ID: %d, feasibility: %d, cost: %f\n", trajectory.m_uniqueId, trajectory.m_feasible, trajectory.m_cost);
+    // std::cout << "Feasibility map:" << std::endl;
+    // for (const auto& pair : trajectory.m_feasabilityMap) {
+    //     std::cout << pair.first << ": " << pair.second << std::endl;
+    // }
   }
 }
 
@@ -391,15 +363,15 @@ static void * main_thread(void * arg)
     qos = dds_create_qos ();
     dds_qset_reliability (qos, DDS_RELIABILITY_RELIABLE, DDS_MSECS(30));  
 
-    std::function<void(const TrajectorySampleData&)> trajectory_callback = [&](const TrajectorySampleData & msg) {on_msg(msg);};
+    std::function<void(const InputData&)> trajectory_callback = [&](const InputData & msg) {on_msg(msg);};
 
     std::cout << "creating reader" << std::endl;
     create_reader(
       participant,
-      &custom_trajectory_msgs_msg_TrajectorySampleData_desc,
+      &custom_trajectory_msgs_msg_InputData_desc,
       "trajectory_sample_msg",
       qos,
-      on_msg_dds<TrajectorySampleData>,
+      on_msg_dds<InputData>,
       reinterpret_cast<void*>(&trajectory_callback)
     );
     
@@ -956,7 +928,7 @@ int main(void)
           -56.67301117135692, 210.23723782774175,
           -56.84360341775189, 210.64394452424278;
           
-  std::shared_ptr<CoordinateSystemWrapper> coordinate_system = std::make_shared<CoordinateSystemWrapper>(path);
+  coordinate_system = std::make_shared<CoordinateSystemWrapper>(path);
     
   // Generate 9 linearly spaced samples between d_min and d_max
   static double d_min = -3.0;
