@@ -12,7 +12,7 @@
 // #include "TrajectorySample.hpp"
 // #include "CartesianSample.hpp"
 // #include "CurvilinearSample.hpp"
-#include "InputData.h"
+#include "board_input_data.h"
 // #include "CartesianSampleData.h"
 // #include "CurvilinearSampleData.h"
 #include "ResultData.h"
@@ -35,7 +35,7 @@ static K_SEM_DEFINE(got_address, 0, 1);
 
 static struct net_mgmt_event_callback mgmt_cb;
 #endif  // CONFIG_NET_DHCPV4
-using InputData = custom_trajectory_msgs_msg_InputData;
+using BoardInputData = board_input_data_msg;
 
 using SamplingMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, 13, Eigen::RowMajor>;
 using RowMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
@@ -52,6 +52,8 @@ static double N = 30; //  self.N = int(config_plan.planning.planning_horizon / c
 static double dT = 0.1;
 
 std::shared_ptr<CoordinateSystemWrapper> coordinate_system;
+
+dds_entity_t result_writer;
 
 SamplingMatrixXd generate_sampling_matrix_cstyle(
     double* t0_range, size_t t0_size,
@@ -140,6 +142,16 @@ static void on_msg_dds(dds_entity_t rd, void * arg)
   }
 }
 
+/*
+Creates a DDS reader.
+
+m_participant: The DDS participant entity.
+desc: Pointer to the DDS topic descriptor for the message type.
+name: Name of the topic to read from.
+qos: Quality of Service settings for the reader.
+callback: Callback function that is called upon data receival.
+arg: User-defined data pointer, passed by the listener to the callback function.
+*/
 void create_reader(
   dds_entity_t m_participant,
   const dds_topic_descriptor_t * desc,
@@ -175,12 +187,21 @@ void create_reader(
     if (rc != DDS_RETCODE_OK)
       DDS_FATAL("dds_get_status_changes: %s\n", dds_strretcode(-rc));
 
+    /* Polling sleep. */
     dds_sleepfor (DDS_MSECS (20));
   }
 
   dds_delete_listener(listener);
 }
 
+/*
+@brief Creates a DDS writer.
+
+@param m_participant The DDS participant entity.
+@param desc Pointer to the DDS topic descriptor for the message type.
+@param name Name of the topic to read from.
+@param qos Quality of Service settings for the reader.
+*/
 dds_entity_t create_writer(
   dds_entity_t m_participant,
   const dds_topic_descriptor_t * desc,
@@ -201,20 +222,20 @@ dds_entity_t create_writer(
   return writer;
 }
 
-Eigen::VectorXd ddsSequenceToVector(const dds_sequence_double& sequence) {
-  if (sequence._length == 0 || sequence._buffer == nullptr)
-      return Eigen::VectorXd{};
-  
-  Eigen::VectorXd vec(sequence._length);
-  for (size_t i = 0; i < sequence._length; ++i) {
-      vec(i) = sequence._buffer[i];
-  }
-  return vec;
-}
+// /*
+// @brief Creates an Eigen::Map to view a DDS buffer as an Eigen::VectorXd.
 
-dds_entity_t result_writer;
+// @param seq Data buffer
+// */
+// inline Eigen::Map< Eigen::VectorXd> ddsSequenceToVector(const dds_sequence_double& seq)
+// {
+//     return Eigen::Map< Eigen::VectorXd>(
+//         seq._buffer, 
+//         static_cast<Eigen::Index>(seq._length)
+//     );
+// }
 
-void on_msg(const InputData& msg) {
+void on_msg(const BoardInputData& msg) {
   static double vehicle_a_max = 11.5;
   static double horizon = 3.0;
   static double vehicle_v_max = 50.8;
@@ -229,6 +250,7 @@ void on_msg(const InputData& msg) {
 
   double velocity = msg.velocity;
   double timestep = msg.timestep;
+  double orientation = msg.orientation;
   double desired_velocity = msg.desired_velocity;
 
   std::cout << "s: " << s << std::endl;
@@ -340,16 +362,13 @@ static void * main_thread(void * arg)
     std::cout << "entered main_thread" << std::endl;
     (void)arg;
     dds_entity_t participant;
-    dds_entity_t topic;
-    dds_entity_t reader;
-    dds_return_t rc;
     dds_qos_t *qos;
 
     struct ddsi_config dds_cfg;
     init_config(dds_cfg);
 
     dds_entity_t domain = dds_create_domain_with_rawconfig(DDS_DOMAIN_ACTUATION, &dds_cfg);
-    // The domain could have been set prior to this point, don't fail in this case.
+
     if (domain < 0 && domain != DDS_RETCODE_PRECONDITION_NOT_MET) {
       printf("dds_create_domain_with_rawconfig: %s\n", dds_strretcode(-domain));
       std::exit(EXIT_FAILURE);
@@ -362,15 +381,15 @@ static void * main_thread(void * arg)
     qos = dds_create_qos ();
     dds_qset_reliability (qos, DDS_RELIABILITY_RELIABLE, DDS_MSECS(30));  
 
-    std::function<void(const InputData&)> trajectory_callback = [&](const InputData & msg) {on_msg(msg);};
+    std::function<void(const BoardInputData&)> trajectory_callback = [&](const BoardInputData & msg) {on_msg(msg);};
 
     std::cout << "creating reader" << std::endl;
     create_reader(
       participant,
-      &custom_trajectory_msgs_msg_InputData_desc,
-      "trajectory_sample_msg",
+      &board_input_data_msg_desc,
+      "board_input_data_msg",
       qos,
-      on_msg_dds<InputData>,
+      on_msg_dds<BoardInputData>,
       reinterpret_cast<void*>(&trajectory_callback)
     );
     

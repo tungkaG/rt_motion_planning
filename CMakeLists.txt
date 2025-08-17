@@ -42,12 +42,12 @@ add_subdirectory(src/cldc)
 add_subdirectory(src/Clipper2/CPP)
 add_subdirectory(src/trajectory_handler)
 add_subdirectory(src/trajectory_sample)
-add_subdirectory(src/input_data)
 
 target_sources(app PRIVATE
-  msg/CartesianSampleData.c
-  msg/CurvilinearSampleData.c
-  msg/TrajectorySampleData.c
+  # msg/CartesianSampleData.c
+  # msg/CurvilinearSampleData.c
+  # msg/TrajectorySampleData.c
+  msg/board_input_data.c
   msg/ResultData.c
   src/communication.cpp
 )
@@ -68,5 +68,4 @@ target_link_libraries(app PRIVATE
   feasibility_functions
   trajectory_sample
   trajectory_handler
-  input_data
 )
