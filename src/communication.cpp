@@ -35,7 +35,6 @@ static K_SEM_DEFINE(got_address, 0, 1);
 
 static struct net_mgmt_event_callback mgmt_cb;
 #endif  // CONFIG_NET_DHCPV4
-
 using InputData = custom_trajectory_msgs_msg_InputData;
 
 using SamplingMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, 13, Eigen::RowMajor>;

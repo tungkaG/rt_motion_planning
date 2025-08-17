@@ -15,22 +15,6 @@ include(GNUInstallDirs)
 
 find_package(Eigen3 REQUIRED)
 
-add_library(mathutil OBJECT
-        math/mvndst.f
-        math/mvn.cpp
-        math/covariance.hpp
-        math/mvn.hpp
-        math/mvndst.hpp
-)
-
-target_include_directories(mathutil
-        PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/math>
-)
-
-target_include_directories(mathutil PRIVATE SYSTEM ${EIGEN3_INCLUDE_DIR})
-
-
 # Build CycloneDDS
 include(cyclonedds_config.cmake)
 create_cdds_lib(${CMAKE_CURRENT_SOURCE_DIR}/../cyclonedds)
@@ -54,7 +38,8 @@ set(CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/install -DCMAK
 
 add_subdirectory(src/cost_functions)
 add_subdirectory(src/feasibility_functions)
-add_subdirectory(src/third_party/crdc)
+add_subdirectory(src/cldc)
+add_subdirectory(src/Clipper2/CPP)
 add_subdirectory(src/trajectory_handler)
 add_subdirectory(src/trajectory_sample)
 add_subdirectory(src/input_data)
