@@ -1,26 +1,56 @@
-to run:
-1. follow ANleitung to install zephyrproject and zephyr SDK: https://docs.zephyrproject.org/latest/develop/getting_started/index.html
-2. go to root then
-git clone https://gitlab.arm.com/automotive-and-industrial/safety-island/actuation-demo.git -b v2.0
-cd actuation-demo
-python3 -m venv ~/actuation-demo/.venv
-source .venv/bin/activate
-git submodule init
-git submodule update
-west init -l zephyr_app
-west update
-west zephyr-export
+Setup:
+    1. follow ANleitung to install zephyrproject and zephyr SDK: https://docs.zephyrproject.org/latest/develop/getting_started/index.html
+    2. go to root then
+    git clone https://gitlab.arm.com/automotive-and-industrial/safety-island/actuation-demo.git -b v2.0
+    cd actuation-demo
+    python3 -m venv ~/actuation-demo/.venv
+    source .venv/bin/activate
+    git submodule init
+    git submodule update
+    west init -l zephyr_app
+    west update
+    west zephyr-export
 
 To run trajectory-evaluator:
-in actuation-demo:
-git clone https://gitlab.lrz.de/autonomous-vehicle-systems/tum-planning/safety-island/trajectory-evaluator.git, ensure it is inside actuation-demo
-copy the cyclonedds folder from actuationdemo/cyclonedds/ and move it to actuation-demo/trajectory-evaluator/cyclonedds
-in actuation-demo/: 
-source .venv/bin/activate
-west build -p -b s32z270dc2_rtu0_r52@D trajectory-evaluator/TrajectoryEvaluator
+    in actuation-demo:
+    git clone https://gitlab.lrz.de/autonomous-vehicle-systems/tum-planning/safety-island/trajectory-evaluator.git
+    copy the cyclonedds folder from actuationdemo/cyclonedds/ and move it to actuation-demo/trajectory-evaluator/cyclonedds
+    in actuation-demo/: 
+    source .venv/bin/activate
+    west build -p -b s32z270dc2_rtu0_r52@D trajectory-evaluator/TrajectoryEvaluator
 
 To run rt_motion_plkanning:
-in actuation-demo:
-git clone https://github.com/tungkaG/rt_motion_planning.git
-source .venv/bin/activate
-west build -p -b s32z270dc2_rtu0_r52@D rt_motion_planning
+    in actuation-demo:
+    git clone https://github.com/tungkaG/rt_motion_planning.git
+    source .venv/bin/activate
+    west build -p -b s32z270dc2_rtu0_r52@D rt_motion_planning
+
+To build idl messages (use helloworld cmake):
+    copy cyclonedds folder from actuation-demo to root
+    cd cyclonedds
+
+    Install cyclone dds:
+    mkdir build
+    cd build
+    cmake -DCMAKE_INSTALL_PREFIX=$PWD/install -DBUILD_EXAMPLES=ON ..
+    cmake --build . --parallel
+    cmake --build . --target install
+    Test cycloneDDS:
+    cd build/install/bin
+    run ./ddsperf or ./idlc
+
+    if want to build hello world:
+    inside helloworld folder:
+    mkdir build 
+    cd build
+    cmake -DCMAKE_PREFIX_PATH=/home/glenn/cyclonedds/build/install ..
+    cmake --build .
+
+    if want to build custom messages:
+    add these lines to CMakeLists on helloworld folder
+    idlc_generate(TARGET board_input_data_lib FILES "board_input_data.idl" WARNINGS no-implicit-extensibility)
+    replace last 2 lines with
+    target_link_libraries(HelloworldPublisher HelloWorldData_lib board_input_data_lib CycloneDDS::ddsc)
+    target_link_libraries(HelloworldSubscriber HelloWorldData_lib board_input_data_lib CycloneDDS::ddsc)
+    build hellow rold
+    built message will be inside hellowowrld/build folder
