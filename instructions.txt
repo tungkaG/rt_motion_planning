@@ -1,0 +1,26 @@
+to run:
+1. follow ANleitung to install zephyrproject and zephyr SDK: https://docs.zephyrproject.org/latest/develop/getting_started/index.html
+2. go to root then
+git clone https://gitlab.arm.com/automotive-and-industrial/safety-island/actuation-demo.git -b v2.0
+cd actuation-demo
+python3 -m venv ~/actuation-demo/.venv
+source .venv/bin/activate
+git submodule init
+git submodule update
+west init -l zephyr_app
+west update
+west zephyr-export
+
+To run trajectory-evaluator:
+in actuation-demo:
+git clone https://gitlab.lrz.de/autonomous-vehicle-systems/tum-planning/safety-island/trajectory-evaluator.git, ensure it is inside actuation-demo
+copy the cyclonedds folder from actuationdemo/cyclonedds/ and move it to actuation-demo/trajectory-evaluator/cyclonedds
+in actuation-demo/: 
+source .venv/bin/activate
+west build -p -b s32z270dc2_rtu0_r52@D trajectory-evaluator/TrajectoryEvaluator
+
+To run rt_motion_plkanning:
+in actuation-demo:
+git clone https://github.com/tungkaG/rt_motion_planning.git
+source .venv/bin/activate
+west build -p -b s32z270dc2_rtu0_r52@D rt_motion_planning
