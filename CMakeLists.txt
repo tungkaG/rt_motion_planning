@@ -48,7 +48,7 @@ target_sources(app PRIVATE
   # msg/CurvilinearSampleData.c
   # msg/TrajectorySampleData.c
   msg/board_input_data.c
-  msg/ResultData.c
+  msg/board_output_data.c
   src/communication.cpp
 )
 

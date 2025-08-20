@@ -13,9 +13,10 @@
 // #include "CartesianSample.hpp"
 // #include "CurvilinearSample.hpp"
 #include "board_input_data.h"
+#include "board_output_data.h"
 // #include "CartesianSampleData.h"
 // #include "CurvilinearSampleData.h"
-#include "ResultData.h"
+// #include "ResultData.h"
 // #include "TrajectoryEvaluator.hpp"
 #include <dds/ddsi/ddsi_config.h>
 #include "zephyr_app.hpp"
@@ -36,6 +37,7 @@ static K_SEM_DEFINE(got_address, 0, 1);
 static struct net_mgmt_event_callback mgmt_cb;
 #endif  // CONFIG_NET_DHCPV4
 using BoardInputData = board_input_data_msg;
+using BoardOutputData = board_output_data_msg;
 
 using SamplingMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, 13, Eigen::RowMajor>;
 using RowMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
@@ -348,13 +350,30 @@ void on_msg(const BoardInputData& msg) {
 
   trajectory_handler.evaluateAllTrajectories();
 
-  for (const auto& trajectory : trajectory_handler.m_trajectories) {
-    printf("ID: %d, feasibility: %d, cost: %f\n", trajectory.m_uniqueId, trajectory.m_feasible, trajectory.m_cost);
-    // std::cout << "Feasibility map:" << std::endl;
-    // for (const auto& pair : trajectory.m_feasabilityMap) {
-    //     std::cout << pair.first << ": " << pair.second << std::endl;
-    // }
-  }
+  // for (const auto& trajectory : trajectory_handler.m_trajectories) {
+  //   printf("ID: %d, feasibility: %d, cost: %f\n", trajectory.m_uniqueId, trajectory.m_feasible, trajectory.m_cost);
+  //   // std::cout << "Feasibility map:" << std::endl;
+  //   // for (const auto& pair : trajectory.m_feasabilityMap) {
+  //   //     std::cout << pair.first << ": " << pair.second << std::endl;
+  //   // }
+  // }
+
+  const auto* bestTrajectory = &trajectory_handler.m_trajectories[0];
+
+    for (const auto& trajectory : trajectory_handler.m_trajectories) {
+        if (trajectory.m_feasible == 1) {
+            if (bestTrajectory->m_feasible != 1 || trajectory.m_cost < bestTrajectory->m_cost) {
+                bestTrajectory = &trajectory;
+            }
+        }
+    }
+    
+    printf("ID: %d, feasibility: %d, cost: %f\n", bestTrajectory->m_uniqueId, bestTrajectory->m_feasible, bestTrajectory->m_cost);
+
+  BoardOutputData result_msg;
+  result_msg.cost = bestTrajectory->m_cost;
+  result_msg.feasibility = bestTrajectory->m_feasible;
+  dds_write(result_writer, &result_msg);
 }
 
 static void * main_thread(void * arg)
@@ -396,8 +415,8 @@ static void * main_thread(void * arg)
     std::cout << "creating writer" << std::endl;
     result_writer = create_writer(
       participant,
-      &custom_trajectory_msgs_msg_ResultData_desc,
-      "result_data_msg",
+      &board_output_data_msg_desc,
+      "board_output_data_msg",
       qos
     );
     dds_delete_qos(qos);
