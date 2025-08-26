@@ -15,8 +15,44 @@
 extern "C" {
 #endif
 
+#ifndef DDS_SEQUENCE_DOUBLE_DEFINED
+#define DDS_SEQUENCE_DOUBLE_DEFINED
+typedef struct dds_sequence_double
+{
+  uint32_t _maximum;
+  uint32_t _length;
+  double *_buffer;
+  bool _release;
+} dds_sequence_double;
+
+#define dds_sequence_double__alloc() \
+((dds_sequence_double*) dds_alloc (sizeof (dds_sequence_double)));
+
+#define dds_sequence_double_allocbuf(l) \
+((double *) dds_alloc ((l) * sizeof (double)))
+#endif /* DDS_SEQUENCE_DOUBLE_DEFINED */
+
+#ifndef DDS_SEQUENCE_DOUBLE_DEFINED
+#define DDS_SEQUENCE_DOUBLE_DEFINED
+typedef struct dds_sequence_double
+{
+  uint32_t _maximum;
+  uint32_t _length;
+  double *_buffer;
+  bool _release;
+} dds_sequence_double;
+
+#define dds_sequence_double__alloc() \
+((dds_sequence_double*) dds_alloc (sizeof (dds_sequence_double)));
+
+#define dds_sequence_double_allocbuf(l) \
+((double *) dds_alloc ((l) * sizeof (double)))
+#endif /* DDS_SEQUENCE_DOUBLE_DEFINED */
+
 typedef struct board_output_data_msg
 {
+  dds_sequence_double x;
+  dds_sequence_double y;
   bool feasibility;
   double cost;
 } board_output_data_msg;

@@ -237,6 +237,22 @@ dds_entity_t create_writer(
 //     );
 // }
 
+inline dds_sequence_double vectorToDdsSequence(const Eigen::VectorXd& vec)
+{
+    dds_sequence_double seq;
+
+    // Allocate memory for the DDS sequence
+    seq._maximum = static_cast<uint32_t>(vec.size());
+    seq._length  = static_cast<uint32_t>(vec.size());
+    seq._buffer  = static_cast<double*>(dds_alloc(seq._maximum * sizeof(double)));
+    seq._release = true; // DDS should free it when cleaning up
+
+    // Copy Eigen data into DDS buffer
+    std::memcpy(seq._buffer, vec.data(), seq._length * sizeof(double));
+
+    return seq;
+}
+
 void on_msg(const BoardInputData& msg) {
   static double vehicle_a_max = 11.5;
   static double horizon = 3.0;
@@ -350,30 +366,36 @@ void on_msg(const BoardInputData& msg) {
 
   trajectory_handler.evaluateAllTrajectories();
 
-  // for (const auto& trajectory : trajectory_handler.m_trajectories) {
-  //   printf("ID: %d, feasibility: %d, cost: %f\n", trajectory.m_uniqueId, trajectory.m_feasible, trajectory.m_cost);
-  //   // std::cout << "Feasibility map:" << std::endl;
-  //   // for (const auto& pair : trajectory.m_feasabilityMap) {
-  //   //     std::cout << pair.first << ": " << pair.second << std::endl;
-  //   // }
-  // }
+  const TrajectorySample* best_trajectory = nullptr;
 
-  const auto* bestTrajectory = &trajectory_handler.m_trajectories[0];
+  for (const auto& trajectory : trajectory_handler.m_trajectories) {
+      if (trajectory.m_feasible == 1) {
+          if (best_trajectory == nullptr || trajectory.m_cost < best_trajectory->m_cost) {
+              best_trajectory = &trajectory;
+          }
+      }
+  }
 
-    for (const auto& trajectory : trajectory_handler.m_trajectories) {
-        if (trajectory.m_feasible == 1) {
-            if (bestTrajectory->m_feasible != 1 || trajectory.m_cost < bestTrajectory->m_cost) {
-                bestTrajectory = &trajectory;
-            }
-        }
-    }
-    
-    printf("ID: %d, feasibility: %d, cost: %f\n", bestTrajectory->m_uniqueId, bestTrajectory->m_feasible, bestTrajectory->m_cost);
+  if (best_trajectory) {
+    printf("Best feasible trajectory:\n");
+    printf("ID: %d, cost: %f\n", best_trajectory->m_uniqueId, best_trajectory->m_cost);
+    std::cout << "x: " << best_trajectory->m_cartesianSample.x.transpose() << std::endl;
+    std::cout << "y: " << best_trajectory->m_cartesianSample.y.transpose() << std::endl;
 
-  BoardOutputData result_msg;
-  result_msg.cost = bestTrajectory->m_cost;
-  result_msg.feasibility = bestTrajectory->m_feasible;
-  dds_write(result_writer, &result_msg);
+
+    // build and publish
+    BoardOutputData result_msg{};              // zero init
+
+    result_msg.x = vectorToDdsSequence(best_trajectory->m_cartesianSample.x);
+    result_msg.y = vectorToDdsSequence(best_trajectory->m_cartesianSample.y);
+
+    result_msg.cost        = best_trajectory->m_cost;
+    result_msg.feasibility = best_trajectory->m_feasible;
+
+    dds_return_t rc = dds_write(result_writer, &result_msg);
+  } else {
+    printf("No feasible trajectories found or m_cartesianSample is null.\n");
+  }
 }
 
 static void * main_thread(void * arg)
