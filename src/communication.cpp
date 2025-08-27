@@ -253,6 +253,19 @@ inline dds_sequence_double vectorToDdsSequence(const Eigen::VectorXd& vec)
     return seq;
 }
 
+inline void fillDdsSequence(dds_sequence_double& dst, const Eigen::VectorXd& vec)
+{
+  const uint32_t need = static_cast<uint32_t>(vec.size());
+  if (dst._maximum < need || dst._buffer == nullptr) {
+    if (dst._buffer && dst._release) dds_free(dst._buffer);
+    dst._buffer  = static_cast<double*>(dds_alloc(need * sizeof(double)));
+    dst._maximum = need;
+    dst._release = true;
+  }
+  dst._length = need;
+  std::memcpy(dst._buffer, vec.data(), need * sizeof(double));
+}
+
 void on_msg(const BoardInputData& msg) {
   static double vehicle_a_max = 11.5;
   static double horizon = 3.0;
@@ -383,15 +396,22 @@ void on_msg(const BoardInputData& msg) {
     std::cout << "y: " << best_trajectory->m_cartesianSample.y.transpose() << std::endl;
 
 
-    // build and publish
-    BoardOutputData result_msg{};              // zero init
+    // // build and publish
+    // BoardOutputData result_msg{};              // zero init
 
-    result_msg.x = vectorToDdsSequence(best_trajectory->m_cartesianSample.x);
-    result_msg.y = vectorToDdsSequence(best_trajectory->m_cartesianSample.y);
+    // result_msg.x = vectorToDdsSequence(best_trajectory->m_cartesianSample.x);
+    // result_msg.y = vectorToDdsSequence(best_trajectory->m_cartesianSample.y);
 
+    // result_msg.cost        = best_trajectory->m_cost;
+    // result_msg.feasibility = best_trajectory->m_feasible;
+
+    // dds_return_t rc = dds_write(result_writer, &result_msg);
+
+    static BoardOutputData result_msg{};       // keep across calls
+    fillDdsSequence(result_msg.x, best_trajectory->m_cartesianSample.x);
+    fillDdsSequence(result_msg.y, best_trajectory->m_cartesianSample.y);
     result_msg.cost        = best_trajectory->m_cost;
     result_msg.feasibility = best_trajectory->m_feasible;
-
     dds_return_t rc = dds_write(result_writer, &result_msg);
   } else {
     printf("No feasible trajectories found or m_cartesianSample is null.\n");
