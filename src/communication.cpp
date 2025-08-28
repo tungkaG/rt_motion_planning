@@ -43,15 +43,21 @@ using SamplingMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, 13, Eigen::RowMaj
 using RowMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
 // Global params
-static constexpr int num_samples_d = 9;
+static constexpr int num_samples_d = 4;
 double sampling_d[num_samples_d + 1]; // +1 in case d is not present and needs to be added
 static int actual_d_samples = 0;
+static const double d_min = -3.0;
+static const double d_max = 3.0;
+static const double d_step = (d_max - d_min) / (num_samples_d - 1);
 
-static constexpr int num_samples_time = 7;
+static constexpr int num_samples_time = 4;
 double sampling_time[num_samples_time + 1]; // +1 in case t is not present and needs to be added
 static int actual_t_samples = 0;
-static double N = 30; //  self.N = int(config_plan.planning.planning_horizon / config_plan.planning.dt)
-static double dT = 0.1;
+static const double t_min = 1.1;
+static const double step_size = 3;
+static const double t_max = 3.0;
+static const double N = 30; //  self.N = int(config_plan.planning.planning_horizon / config_plan.planning.dt)
+static const double dT = 0.1;
 
 dds_entity_t result_writer;
 
@@ -600,10 +606,8 @@ void create_reader(
     rc = dds_get_status_changes (reader, &status);
     if (rc != DDS_RETCODE_OK)
       DDS_FATAL("dds_get_status_changes: %s\n", dds_strretcode(-rc));
-    std::cout << 6 << std::endl;
     /* Polling sleep. */
     dds_sleepfor (DDS_MSECS (20));
-    std::cout << 7 << std::endl;
   }
   dds_delete_listener(listener);
 }
@@ -673,14 +677,14 @@ void on_msg(const BoardInputData& msg) {
   // Generate 9 linearly spaced samples between min_v and max_v
   double min_v = std::max(0.001, velocity - vehicle_a_max * horizon);
   double max_v = std::min({velocity + (vehicle_a_max / 6.0) * horizon, v_limit, vehicle_v_max});
-  static constexpr int num_samples_v = 9;
+  static constexpr int num_samples_v = 4;
   double sampling_v[num_samples_v + 1]; // +1 in case ss is not present and needs to be added
   int actual_v_samples = 0;
 
   double step_v = (max_v - min_v) / (num_samples_v - 1);
   sampling_v[0] = ss; ++actual_v_samples;
   for (int i = 1; i < num_samples_v+1; ++i) {
-    if(sampling_v[i] != ss) {
+    if(sampling_v[i] != ss && (actual_v_samples < num_samples_v)) {
       ++actual_v_samples;
       sampling_v[i] = min_v + i * step_v;
     }
@@ -694,7 +698,7 @@ void on_msg(const BoardInputData& msg) {
       break;  
     }
   }
-  if (add_d) {
+  if (add_d && (actual_d_samples < num_samples_d)) {
     actual_d_samples++;
     sampling_d[actual_d_samples] = d;
   }
@@ -707,7 +711,7 @@ void on_msg(const BoardInputData& msg) {
       break;
     }
   }
-  if (add_time) {
+  if (add_time && (actual_t_samples < num_samples_time)) {
     actual_t_samples++;
     sampling_time[actual_t_samples] = N*dT;
   }
@@ -778,18 +782,6 @@ void on_msg(const BoardInputData& msg) {
     printf("ID: %d, cost: %f\n", best_trajectory->m_uniqueId, best_trajectory->m_cost);
     std::cout << "x: " << best_trajectory->m_cartesianSample.x.transpose() << std::endl;
     std::cout << "y: " << best_trajectory->m_cartesianSample.y.transpose() << std::endl;
-
-
-    // // build and publish
-    // BoardOutputData result_msg{};              // zero init
-
-    // result_msg.x = vectorToDdsSequence(best_trajectory->m_cartesianSample.x);
-    // result_msg.y = vectorToDdsSequence(best_trajectory->m_cartesianSample.y);
-
-    // result_msg.cost        = best_trajectory->m_cost;
-    // result_msg.feasibility = best_trajectory->m_feasible;
-
-    // dds_return_t rc = dds_write(result_writer, &result_msg);
 
     static BoardOutputData result_msg{};       // keep across calls
     fillDdsSequence(result_msg.x, best_trajectory->m_cartesianSample.x);
@@ -990,20 +982,12 @@ int main(void)
   coordinate_system = std::make_shared<CoordinateSystemWrapper>(*path);
     
   // Generate 9 linearly spaced samples between d_min and d_max
-  static double d_min = -3.0;
-  static double d_max = 3.0;
-
-  static double d_step = (d_max - d_min) / (num_samples_d - 1);
   for (int i = 0; i < num_samples_d; ++i) {
       sampling_d[i] = d_min + i * d_step;
   }
   actual_d_samples = num_samples_d;
 
   // Generate 7 linearly spaced samples between t_min and t_max
-  static double t_min = 1.1;
-  static double step_size = 3;
-  static double t_max = 3.0;
-
   sampling_time[actual_t_samples] = t_min;
   ++actual_t_samples;
   static double t_val = t_min + step_size * dT;
