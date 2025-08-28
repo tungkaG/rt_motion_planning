@@ -11,14 +11,6 @@ Setup:
     west update
     west zephyr-export
 
-To run trajectory-evaluator:
-    in actuation-demo:
-    git clone https://gitlab.lrz.de/autonomous-vehicle-systems/tum-planning/safety-island/trajectory-evaluator.git
-    copy the cyclonedds folder from actuationdemo/cyclonedds/ and move it to actuation-demo/trajectory-evaluator/cyclonedds
-    in actuation-demo/: 
-    source .venv/bin/activate
-    west build -p -b s32z270dc2_rtu0_r52@D trajectory-evaluator/TrajectoryEvaluator
-
 To run rt_motion_plkanning:
     in actuation-demo:
     git clone https://github.com/tungkaG/rt_motion_planning.git
