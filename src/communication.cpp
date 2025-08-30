@@ -46,20 +46,23 @@ using RowMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen:
 
 // Global params
 static constexpr int num_samples_d = 4;
-double sampling_d[num_samples_d + 1]; // +1 in case d is not present and needs to be added
-static int actual_d_samples = 0;
+double sampling_d[num_samples_d]; // +1 in case d is not present and needs to be added
+// static int actual_d_samples = 0;
 static const double d_min = -3.0;
 static const double d_max = 3.0;
 static const double d_step = (d_max - d_min) / (num_samples_d - 1);
 
 static constexpr int num_samples_time = 4;
-double sampling_time[num_samples_time + 1]; // +1 in case t is not present and needs to be added
-static int actual_t_samples = 0;
+double sampling_time[num_samples_time]; // +1 in case t is not present and needs to be added
+// static int actual_t_samples = 0;
 static const double t_min = 1.1;
-static const double step_size = 3;
+// static const double step_size = 3;
 static const double t_max = 3.0;
-static const double N = 30; //  self.N = int(config_plan.planning.planning_horizon / config_plan.planning.dt)
+// static const double N = 30; //  self.N = int(config_plan.planning.planning_horizon / config_plan.planning.dt)
 static const double dT = 0.1;
+
+static const int num_samples_v = 4;
+double sampling_v[num_samples_v];
 
 dds_entity_t result_writer;
 
@@ -695,61 +698,30 @@ void on_msg(const BoardInputData& msg) {
   double orientation = msg.orientation;
   double desired_velocity = msg.desired_velocity;
 
-  std::cout << "s: " << s << std::endl;
-
-  // Generate 9 linearly spaced samples between min_v and max_v
   double min_v = std::max(0.001, velocity - vehicle_a_max * horizon);
-  double max_v = std::min({velocity + (vehicle_a_max / 6.0) * horizon, v_limit, vehicle_v_max});
-  static constexpr int num_samples_v = 4;
-  double sampling_v[num_samples_v + 1]; // +1 in case ss is not present and needs to be added
-  int actual_v_samples = 0;
+  double max_v = std::min({velocity + (vehicle_a_max / 6.0) * horizon,
+                          v_limit, vehicle_v_max});
 
-  double step_v = (max_v - min_v) / (num_samples_v - 1);
-  sampling_v[0] = ss; ++actual_v_samples;
-  for (int i = 1; i < num_samples_v+1; ++i) {
-    if(sampling_v[i] != ss && (actual_v_samples < num_samples_v)) {
-      ++actual_v_samples;
-      sampling_v[i] = min_v + i * step_v;
-    }
+  sampling_v[0] = ss;
+  for (int i = 0; i < num_samples_v; ++i) {
+      sampling_v[i] = min_v + i * (max_v - min_v) / (num_samples_v - 1);
   }
   
   // Add d to sampling_d if not present
-  bool add_d = true;
-  for (int i = 0; i < num_samples_d; ++i) {
-    if(sampling_d[i] == d) {
-      add_d = false;
-      break;  
-    }
-  }
-  if (add_d && (actual_d_samples < num_samples_d)) {
-    actual_d_samples++;
-    sampling_d[actual_d_samples] = d;
-  }
+  sampling_d[0] = d;
 
-  // Add N*dT to sampling_time if not present
-  bool add_time = true;
-  for (int i = 0; i < num_samples_time; ++i) {
-    if(sampling_time[i] == N*dT) {
-      add_time = false;
-      break;
-    }
-  }
-  if (add_time && (actual_t_samples < num_samples_time)) {
-    actual_t_samples++;
-    sampling_time[actual_t_samples] = N*dT;
-  }
 
   size_t t0_size = 1;
-  size_t t1_size = actual_t_samples;
+  size_t t1_size = num_samples_time;
   size_t s0_size = 1;
   size_t ss0_size = 1;
   size_t sss0_size = 1;
-  size_t ss1_size = actual_v_samples;
+  size_t ss1_size = num_samples_v;
   size_t sss1_size = 1;
   size_t d0_size = 1;
   size_t dd0_size = 1;
   size_t ddd0_size = 1;
-  size_t d1_size = actual_d_samples;
+  size_t d1_size =  num_samples_d;
   size_t dd1_size = 1;
   size_t ddd1_size = 1;
 
@@ -796,53 +768,96 @@ void on_msg(const BoardInputData& msg) {
     return;
   }
 
-  static board_output_data_msg output_msg{};   // reuse buffers across calls
+  static board_output_data_msg output_msg{};
 
-  // grow samples to N and zero new structs once when a new buffer is allocated
-  {
-    bool newly = false;
-    ensure_seq_capacity((void**)&output_msg.samples._buffer,
-                        &output_msg.samples._maximum, &output_msg.samples._release,
-                        N, sizeof(trajectory_data_cartesian_sample), &newly);
-    output_msg.samples._length = N;
-    if (newly) {
-      std::memset(output_msg.samples._buffer, 0,
-                  output_msg.samples._maximum * sizeof(trajectory_data_cartesian_sample));
-    }
+  static bool called_once = false;
+  if (!called_once) {
+    // allocate arrays once
+    output_msg.samples._buffer =
+        static_cast<trajectory_data_cartesian_sample*>(dds_alloc(N * sizeof(trajectory_data_cartesian_sample)));
+    std::memset(output_msg.samples._buffer, 0, N * sizeof(trajectory_data_cartesian_sample));
+    output_msg.samples._maximum = N;
+    output_msg.samples._length  = N;
+    output_msg.samples._release = true;
+
+    output_msg.feasibility._buffer =
+        static_cast<bool*>(dds_alloc(N * sizeof(bool)));
+    output_msg.feasibility._maximum = N;
+    output_msg.feasibility._length  = N;
+    output_msg.feasibility._release = true;
+
+    output_msg.cost._buffer =
+        static_cast<double*>(dds_alloc(N * sizeof(double)));
+    output_msg.cost._maximum = N;
+    output_msg.cost._length  = N;
+    output_msg.cost._release = true;
+
+    called_once = true;
   }
 
-  // grow feasibility and cost to N
-  {
-    bool newly = false;
-    ensure_seq_capacity((void**)&output_msg.feasibility._buffer,
-                        &output_msg.feasibility._maximum, &output_msg.feasibility._release,
-                        N, sizeof(bool), &newly);
-    output_msg.feasibility._length = N;
-  }
-  {
-    bool newly = false;
-    ensure_seq_capacity((void**)&output_msg.cost._buffer,
-                        &output_msg.cost._maximum, &output_msg.cost._release,
-                        N, sizeof(double), &newly);
-    output_msg.cost._length = N;
-  }
-
-  // fill all entries
+  // overwrite each element
   for (uint32_t i = 0; i < N; ++i) {
     const auto& t = trajectory_handler.m_trajectories[i];
 
     trajectory_data_cartesian_sample* s = &output_msg.samples._buffer[i];
-    // s may already have inner buffers from a previous call, fill_cartesian_sample reuses or grows them
     fill_cartesian_sample(s, t.m_cartesianSample);
 
-    output_msg.feasibility._buffer[i] = t.m_feasible != 0;
+    output_msg.feasibility._buffer[i] = t.m_feasible;
     output_msg.cost._buffer[i]        = t.m_cost;
   }
 
-  const dds_return_t rc = dds_write(result_writer, &output_msg);
+  dds_return_t rc = dds_write(result_writer, &output_msg);
   if (rc != DDS_RETCODE_OK) {
     fprintf(stderr, "dds_write failed, rc=%d\n", rc);
   }
+
+  // static board_output_data_msg output_msg{};   // reuse buffers across calls
+
+  // // grow samples to N and zero new structs once when a new buffer is allocated
+  // {
+  //   bool newly = false;
+  //   ensure_seq_capacity((void**)&output_msg.samples._buffer,
+  //                       &output_msg.samples._maximum, &output_msg.samples._release,
+  //                       N, sizeof(trajectory_data_cartesian_sample), &newly);
+  //   output_msg.samples._length = N;
+  //   if (newly) {
+  //     std::memset(output_msg.samples._buffer, 0,
+  //                 output_msg.samples._maximum * sizeof(trajectory_data_cartesian_sample));
+  //   }
+  // }
+
+  // // grow feasibility and cost to N
+  // {
+  //   bool newly = false;
+  //   ensure_seq_capacity((void**)&output_msg.feasibility._buffer,
+  //                       &output_msg.feasibility._maximum, &output_msg.feasibility._release,
+  //                       N, sizeof(bool), &newly);
+  //   output_msg.feasibility._length = N;
+  // }
+  // {
+  //   bool newly = false;
+  //   ensure_seq_capacity((void**)&output_msg.cost._buffer,
+  //                       &output_msg.cost._maximum, &output_msg.cost._release,
+  //                       N, sizeof(double), &newly);
+  //   output_msg.cost._length = N;
+  // }
+
+  // // fill all entries
+  // for (uint32_t i = 0; i < N; ++i) {
+  //   const auto& t = trajectory_handler.m_trajectories[i];
+
+  //   trajectory_data_cartesian_sample* s = &output_msg.samples._buffer[i];
+  //   // s may already have inner buffers from a previous call, fill_cartesian_sample reuses or grows them
+  //   fill_cartesian_sample(s, t.m_cartesianSample);
+
+  //   output_msg.feasibility._buffer[i] = t.m_feasible != 0;
+  //   output_msg.cost._buffer[i]        = t.m_cost;
+  // }
+
+  // const dds_return_t rc = dds_write(result_writer, &output_msg);
+  // if (rc != DDS_RETCODE_OK) {
+  //   fprintf(stderr, "dds_write failed, rc=%d\n", rc);
+  // }
 }
 
 static void * main_thread(void * arg)
@@ -1032,21 +1047,25 @@ int main(void)
   // construct your coordinate_system with it
   coordinate_system = std::make_shared<CoordinateSystemWrapper>(*path);
     
-  // Generate 9 linearly spaced samples between d_min and d_max
-  for (int i = 0; i < num_samples_d; ++i) {
+  // Generate linearly spaced samples between d_min and d_max
+  for (int i = 1; i < num_samples_d; ++i) {
       sampling_d[i] = d_min + i * d_step;
   }
-  actual_d_samples = num_samples_d;
+  // actual_d_samples = num_samples_d;
 
-  // Generate 7 linearly spaced samples between t_min and t_max
-  sampling_time[actual_t_samples] = t_min;
-  ++actual_t_samples;
-  static double t_val = t_min + step_size * dT;
-  while(t_val < t_max) {
-      sampling_time[actual_t_samples] = t_val;
-      ++actual_t_samples;
-      t_val += step_size * dT;
+  // Generate linearly spaced samples between t_min and t_max
+  for (int i = 0; i < num_samples_time; ++i) {
+    sampling_time[i] = t_min + i * (t_max - t_min) / (num_samples_time - 1);
   }
+
+  // sampling_time[0] = t_min;
+  // int i = 1;
+  // static double t_val = t_min + step_size * dT;
+  // while(t_val < t_max) {
+  //     sampling_time[i] = t_val;
+  //     ++i;
+  //     t_val += step_size * dT;
+  // }
 
   pthread_attr_init(&main_attr);
   pthread_attr_setstack(&main_attr, &main_stack_area, main_stacksize);
