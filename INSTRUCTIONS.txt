@@ -15,7 +15,7 @@ To run rt_motion_plkanning:
     in actuation-demo:
     git clone https://github.com/tungkaG/rt_motion_planning.git
     source .venv/bin/activate
-    west build -p -b s32z270dc2_rtu0_r52@D rt_motion_planning
+    west build -p -b s32z270dc2_rtu0_r52@D rt_motion_planning -DEXTRA_DTC_OVERLAY_FILE=arm_ethernet.overlay
 
 To build idl messages (use helloworld cmake):
     copy cyclonedds folder from actuation-demo to root

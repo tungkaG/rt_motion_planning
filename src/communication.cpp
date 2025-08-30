@@ -14,6 +14,7 @@
 // #include "CurvilinearSample.hpp"
 #include "board_input_data.h"
 #include "board_output_data.h"
+#include "cartesian_sample.h"
 // #include "CartesianSampleData.h"
 // #include "CurvilinearSampleData.h"
 // #include "ResultData.h"
@@ -38,6 +39,7 @@ static struct net_mgmt_event_callback mgmt_cb;
 #endif  // CONFIG_NET_DHCPV4
 using BoardInputData = board_input_data_msg;
 using BoardOutputData = board_output_data_msg;
+// using CartesianSampleData = trajectory_data_cartesian_sample;
 
 using SamplingMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, 13, Eigen::RowMajor>;
 using RowMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
@@ -641,17 +643,38 @@ dds_entity_t create_writer(
 }
 
 
-inline void fillDdsSequence(dds_sequence_double& dst, const Eigen::VectorXd& vec)
-{
-  const uint32_t need = static_cast<uint32_t>(vec.size());
-  if (dst._maximum < need || dst._buffer == nullptr) {
-    if (dst._buffer && dst._release) dds_free(dst._buffer);
-    dst._buffer  = static_cast<double*>(dds_alloc(need * sizeof(double)));
-    dst._maximum = need;
-    dst._release = true;
+// generic grow helper, tells you if it allocated a new buffer
+static inline void ensure_seq_capacity(void** buf, uint32_t* maximum, bool* release,
+                                       uint32_t need, size_t elem_size,
+                                       bool* newly_allocated) {
+  *newly_allocated = false;
+  if (*maximum < need || *buf == nullptr) {
+    if (*buf && *release) dds_free(*buf);
+    *buf = dds_alloc(need * elem_size);
+    *maximum = need;
+    *release = true;
+    *newly_allocated = true;
   }
-  dst._length = need;
-  std::memcpy(dst._buffer, vec.data(), need * sizeof(double));
+}
+
+static inline void fill_seq_double(dds_sequence_double* dst, const Eigen::VectorXd& vec) {
+  const uint32_t n = static_cast<uint32_t>(vec.size());
+  bool newbuf = false;
+  ensure_seq_capacity((void**)&dst->_buffer, &dst->_maximum, &dst->_release,
+                      n, sizeof(double), &newbuf);
+  dst->_length = n;
+  if (n) std::memcpy(dst->_buffer, vec.data(), n * sizeof(double));
+}
+
+static inline void fill_cartesian_sample(trajectory_data_cartesian_sample* out,
+                                         const CartesianSample& in) {
+  fill_seq_double(&out->x,            in.x);
+  fill_seq_double(&out->y,            in.y);
+  fill_seq_double(&out->theta,        in.theta);
+  fill_seq_double(&out->velocity,     in.velocity);
+  fill_seq_double(&out->acceleration, in.acceleration);
+  fill_seq_double(&out->kappa,        in.kappa);
+  fill_seq_double(&out->kappaDot,     in.kappaDot);
 }
 
 void on_msg(const BoardInputData& msg) {
@@ -757,7 +780,7 @@ void on_msg(const BoardInputData& msg) {
       ddd1_range, ddd1_size
   );
 
-  TrajectoryHandler trajectory_handler(0.1, desired_velocity);
+  TrajectoryHandler trajectory_handler(dT, desired_velocity);
 
   trajectory_handler.addFillCoordinates(std::make_unique<FillCoordinates>(false, orientation, coordinate_system, 3.0));
 
@@ -767,30 +790,58 @@ void on_msg(const BoardInputData& msg) {
 
   trajectory_handler.evaluateAllTrajectories();
 
-  const TrajectorySample* best_trajectory = nullptr;
-
-  for (const auto& trajectory : trajectory_handler.m_trajectories) {
-      if (trajectory.m_feasible == 1) {
-          if (best_trajectory == nullptr || trajectory.m_cost < best_trajectory->m_cost) {
-              best_trajectory = &trajectory;
-          }
-      }
+  const uint32_t N = static_cast<uint32_t>(trajectory_handler.m_trajectories.size());
+  if (N == 0) {
+    printf("No trajectories to publish\n");
+    return;
   }
 
-  if (best_trajectory) {
-    printf("Best feasible trajectory:\n");
-    printf("ID: %d, cost: %f\n", best_trajectory->m_uniqueId, best_trajectory->m_cost);
-    std::cout << "x: " << best_trajectory->m_cartesianSample.x.transpose() << std::endl;
-    std::cout << "y: " << best_trajectory->m_cartesianSample.y.transpose() << std::endl;
+  static board_output_data_msg output_msg{};   // reuse buffers across calls
 
-    static BoardOutputData result_msg{};       // keep across calls
-    fillDdsSequence(result_msg.x, best_trajectory->m_cartesianSample.x);
-    fillDdsSequence(result_msg.y, best_trajectory->m_cartesianSample.y);
-    result_msg.cost        = best_trajectory->m_cost;
-    result_msg.feasibility = best_trajectory->m_feasible;
-    dds_return_t rc = dds_write(result_writer, &result_msg);
-  } else {
-    printf("No feasible trajectories found or m_cartesianSample is null.\n");
+  // grow samples to N and zero new structs once when a new buffer is allocated
+  {
+    bool newly = false;
+    ensure_seq_capacity((void**)&output_msg.samples._buffer,
+                        &output_msg.samples._maximum, &output_msg.samples._release,
+                        N, sizeof(trajectory_data_cartesian_sample), &newly);
+    output_msg.samples._length = N;
+    if (newly) {
+      std::memset(output_msg.samples._buffer, 0,
+                  output_msg.samples._maximum * sizeof(trajectory_data_cartesian_sample));
+    }
+  }
+
+  // grow feasibility and cost to N
+  {
+    bool newly = false;
+    ensure_seq_capacity((void**)&output_msg.feasibility._buffer,
+                        &output_msg.feasibility._maximum, &output_msg.feasibility._release,
+                        N, sizeof(bool), &newly);
+    output_msg.feasibility._length = N;
+  }
+  {
+    bool newly = false;
+    ensure_seq_capacity((void**)&output_msg.cost._buffer,
+                        &output_msg.cost._maximum, &output_msg.cost._release,
+                        N, sizeof(double), &newly);
+    output_msg.cost._length = N;
+  }
+
+  // fill all entries
+  for (uint32_t i = 0; i < N; ++i) {
+    const auto& t = trajectory_handler.m_trajectories[i];
+
+    trajectory_data_cartesian_sample* s = &output_msg.samples._buffer[i];
+    // s may already have inner buffers from a previous call, fill_cartesian_sample reuses or grows them
+    fill_cartesian_sample(s, t.m_cartesianSample);
+
+    output_msg.feasibility._buffer[i] = t.m_feasible != 0;
+    output_msg.cost._buffer[i]        = t.m_cost;
+  }
+
+  const dds_return_t rc = dds_write(result_writer, &output_msg);
+  if (rc != DDS_RETCODE_OK) {
+    fprintf(stderr, "dds_write failed, rc=%d\n", rc);
   }
 }
 
