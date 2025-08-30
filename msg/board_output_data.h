@@ -11,6 +11,8 @@
 
 #include "cartesian_sample.h"
 
+#include "curvilinear_sample.h"
+
 #include "dds/ddsc/dds_public_impl.h"
 
 #ifdef __cplusplus
@@ -33,6 +35,23 @@ typedef struct dds_sequence_trajectory_data_cartesian_sample
 #define dds_sequence_trajectory_data_cartesian_sample_allocbuf(l) \
 ((struct trajectory_data_cartesian_sample *) dds_alloc ((l) * sizeof (struct trajectory_data_cartesian_sample)))
 #endif /* DDS_SEQUENCE_TRAJECTORY_DATA_CARTESIAN_SAMPLE_DEFINED */
+
+#ifndef DDS_SEQUENCE_TRAJECTORY_DATA_CURVILINEAR_SAMPLE_DEFINED
+#define DDS_SEQUENCE_TRAJECTORY_DATA_CURVILINEAR_SAMPLE_DEFINED
+typedef struct dds_sequence_trajectory_data_curvilinear_sample
+{
+  uint32_t _maximum;
+  uint32_t _length;
+  struct trajectory_data_curvilinear_sample *_buffer;
+  bool _release;
+} dds_sequence_trajectory_data_curvilinear_sample;
+
+#define dds_sequence_trajectory_data_curvilinear_sample__alloc() \
+((dds_sequence_trajectory_data_curvilinear_sample*) dds_alloc (sizeof (dds_sequence_trajectory_data_curvilinear_sample)));
+
+#define dds_sequence_trajectory_data_curvilinear_sample_allocbuf(l) \
+((struct trajectory_data_curvilinear_sample *) dds_alloc ((l) * sizeof (struct trajectory_data_curvilinear_sample)))
+#endif /* DDS_SEQUENCE_TRAJECTORY_DATA_CURVILINEAR_SAMPLE_DEFINED */
 
 #ifndef DDS_SEQUENCE_BOOL_DEFINED
 #define DDS_SEQUENCE_BOOL_DEFINED
@@ -71,6 +90,7 @@ typedef struct dds_sequence_double
 typedef struct board_output_data_msg
 {
   dds_sequence_trajectory_data_cartesian_sample samples;
+  dds_sequence_trajectory_data_curvilinear_sample samples_curv;
   dds_sequence_bool feasibility;
   dds_sequence_double cost;
 } board_output_data_msg;

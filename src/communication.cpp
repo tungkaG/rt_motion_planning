@@ -15,6 +15,7 @@
 #include "board_input_data.h"
 #include "board_output_data.h"
 #include "cartesian_sample.h"
+#include "curvilinear_sample.h"
 // #include "CartesianSampleData.h"
 // #include "CurvilinearSampleData.h"
 // #include "ResultData.h"
@@ -680,6 +681,16 @@ static inline void fill_cartesian_sample(trajectory_data_cartesian_sample* out,
   fill_seq_double(&out->kappaDot,     in.kappaDot);
 }
 
+static inline void fill_curvilinear_sample(trajectory_data_curvilinear_sample* out,
+                                         const CurviLinearSample& in) {
+  fill_seq_double(&out->s,            in.s);
+  fill_seq_double(&out->ss,           in.ss);
+  fill_seq_double(&out->sss,          in.sss);
+  fill_seq_double(&out->d,            in.d);
+  fill_seq_double(&out->dd,           in.dd);
+  fill_seq_double(&out->ddd,          in.ddd);
+}
+
 void on_msg(const BoardInputData& msg) {
   static double vehicle_a_max = 11.5;
   static double horizon = 3.0;
@@ -775,10 +786,17 @@ void on_msg(const BoardInputData& msg) {
     // allocate arrays once
     output_msg.samples._buffer =
         static_cast<trajectory_data_cartesian_sample*>(dds_alloc(N * sizeof(trajectory_data_cartesian_sample)));
-    std::memset(output_msg.samples._buffer, 0, N * sizeof(trajectory_data_cartesian_sample));
+    std::memset(output_msg.samples._buffer, 0, N *  sizeof(trajectory_data_cartesian_sample));
     output_msg.samples._maximum = N;
     output_msg.samples._length  = N;
     output_msg.samples._release = true;
+
+    output_msg.samples_curv._buffer =
+        static_cast<trajectory_data_curvilinear_sample*>(dds_alloc(N * sizeof(trajectory_data_curvilinear_sample)));
+    std::memset(output_msg.samples_curv._buffer, 0, N *  sizeof(trajectory_data_curvilinear_sample));
+    output_msg.samples_curv._maximum = N;
+    output_msg.samples_curv._length  = N;
+    output_msg.samples_curv._release = true;
 
     output_msg.feasibility._buffer =
         static_cast<bool*>(dds_alloc(N * sizeof(bool)));
@@ -799,8 +817,11 @@ void on_msg(const BoardInputData& msg) {
   for (uint32_t i = 0; i < N; ++i) {
     const auto& t = trajectory_handler.m_trajectories[i];
 
-    trajectory_data_cartesian_sample* s = &output_msg.samples._buffer[i];
-    fill_cartesian_sample(s, t.m_cartesianSample);
+    trajectory_data_cartesian_sample* s_cart = &output_msg.samples._buffer[i];
+    fill_cartesian_sample(s_cart, t.m_cartesianSample);
+
+    trajectory_data_curvilinear_sample* s_curv = &output_msg.samples_curv._buffer[i];
+    fill_curvilinear_sample(s_curv, t.m_curvilinearSample);
 
     output_msg.feasibility._buffer[i] = t.m_feasible;
     output_msg.cost._buffer[i]        = t.m_cost;
@@ -811,53 +832,6 @@ void on_msg(const BoardInputData& msg) {
     fprintf(stderr, "dds_write failed, rc=%d\n", rc);
   }
 
-  // static board_output_data_msg output_msg{};   // reuse buffers across calls
-
-  // // grow samples to N and zero new structs once when a new buffer is allocated
-  // {
-  //   bool newly = false;
-  //   ensure_seq_capacity((void**)&output_msg.samples._buffer,
-  //                       &output_msg.samples._maximum, &output_msg.samples._release,
-  //                       N, sizeof(trajectory_data_cartesian_sample), &newly);
-  //   output_msg.samples._length = N;
-  //   if (newly) {
-  //     std::memset(output_msg.samples._buffer, 0,
-  //                 output_msg.samples._maximum * sizeof(trajectory_data_cartesian_sample));
-  //   }
-  // }
-
-  // // grow feasibility and cost to N
-  // {
-  //   bool newly = false;
-  //   ensure_seq_capacity((void**)&output_msg.feasibility._buffer,
-  //                       &output_msg.feasibility._maximum, &output_msg.feasibility._release,
-  //                       N, sizeof(bool), &newly);
-  //   output_msg.feasibility._length = N;
-  // }
-  // {
-  //   bool newly = false;
-  //   ensure_seq_capacity((void**)&output_msg.cost._buffer,
-  //                       &output_msg.cost._maximum, &output_msg.cost._release,
-  //                       N, sizeof(double), &newly);
-  //   output_msg.cost._length = N;
-  // }
-
-  // // fill all entries
-  // for (uint32_t i = 0; i < N; ++i) {
-  //   const auto& t = trajectory_handler.m_trajectories[i];
-
-  //   trajectory_data_cartesian_sample* s = &output_msg.samples._buffer[i];
-  //   // s may already have inner buffers from a previous call, fill_cartesian_sample reuses or grows them
-  //   fill_cartesian_sample(s, t.m_cartesianSample);
-
-  //   output_msg.feasibility._buffer[i] = t.m_feasible != 0;
-  //   output_msg.cost._buffer[i]        = t.m_cost;
-  // }
-
-  // const dds_return_t rc = dds_write(result_writer, &output_msg);
-  // if (rc != DDS_RETCODE_OK) {
-  //   fprintf(stderr, "dds_write failed, rc=%d\n", rc);
-  // }
 }
 
 static void * main_thread(void * arg)
