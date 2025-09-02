@@ -17,6 +17,9 @@ To run rt_motion_plkanning:
     source .venv/bin/activate
     west build -p -b s32z270dc2_rtu0_r52@D rt_motion_planning -DEXTRA_DTC_OVERLAY_FILE=arm_ethernet.overlay
 
+    to flash:
+    west debug --s32ds-path=/usr/local/NXP/S32DS.3.6.3 --elf-file ~/actuation-demo/build/zephyr/zephyr.elf --tool-opt='--batch'
+
 To build idl messages (use helloworld cmake):
     copy cyclonedds folder from actuation-demo to root
     cd cyclonedds
