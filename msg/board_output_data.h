@@ -93,6 +93,7 @@ typedef struct board_output_data_msg
   dds_sequence_trajectory_data_curvilinear_sample samples_curv;
   dds_sequence_bool feasibility;
   dds_sequence_double cost;
+  double sampling_latency_ms;
 } board_output_data_msg;
 
 extern const dds_topic_descriptor_t board_output_data_msg_desc;

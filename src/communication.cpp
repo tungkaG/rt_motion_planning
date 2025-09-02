@@ -9,6 +9,7 @@
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/ethernet.h>
 #include <Eigen/Core>
+#include <chrono>
 // #include "TrajectorySample.hpp"
 // #include "CartesianSample.hpp"
 // #include "CurvilinearSample.hpp"
@@ -747,6 +748,8 @@ void on_msg(const BoardInputData& msg) {
   double dd1_range[1] = {0.0};
   double ddd1_range[1] = {0.0};
 
+  auto t_sampling_start = std::chrono::steady_clock::now();
+
   SamplingMatrixXd sampling_matrix = generate_sampling_matrix_cstyle(
       t0_range, t0_size,
       sampling_time, t1_size,
@@ -762,6 +765,9 @@ void on_msg(const BoardInputData& msg) {
       dd1_range, dd1_size,
       ddd1_range, ddd1_size
   );
+
+  auto t_sampling_end = std::chrono::steady_clock::now();
+  double sampling_latency_ms = std::chrono::duration<double, std::milli>(t_sampling_end - t_sampling_start).count();
 
   TrajectoryHandler trajectory_handler(dT, desired_velocity);
 
@@ -827,6 +833,8 @@ void on_msg(const BoardInputData& msg) {
     output_msg.cost._buffer[i]        = t.m_cost;
   }
 
+  output_msg.sampling_latency_ms = sampling_latency_ms;
+
   dds_return_t rc = dds_write(result_writer, &output_msg);
   if (rc != DDS_RETCODE_OK) {
     fprintf(stderr, "dds_write failed, rc=%d\n", rc);
@@ -836,7 +844,7 @@ void on_msg(const BoardInputData& msg) {
 
 static void * main_thread(void * arg)
 {
-    std::cout << "entered main_thread, rt_motion_planning_jlk" << std::endl;
+    std::cout << "entered main_thread, rt_motion_planning" << std::endl;
     (void)arg;
     dds_entity_t participant;
     dds_qos_t *qos;
