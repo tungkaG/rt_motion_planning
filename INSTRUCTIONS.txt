@@ -20,6 +20,9 @@ To run rt_motion_plkanning:
     to flash:
     west debug --s32ds-path=/usr/local/NXP/S32DS.3.6.3 --elf-file ~/actuation-demo/build/zephyr/zephyr.elf --tool-opt='--batch'
 
+    to log:
+    run log.py
+
 To build idl messages (use helloworld cmake):
     copy cyclonedds folder from actuation-demo to root
     cd cyclonedds

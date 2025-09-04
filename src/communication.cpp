@@ -8,6 +8,9 @@
 #include <pthread.h>
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/ethernet.h>
+#include <zephyr/sys/mem_stats.h>
+#include <zephyr/sys/util.h>
+#include <sys/resource.h>
 #include <Eigen/Core>
 #include <chrono>
 // #include "TrajectorySample.hpp"
@@ -47,7 +50,7 @@ using SamplingMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, 13, Eigen::RowMaj
 using RowMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
 // Global params
-static constexpr int num_samples_d = 4;
+static constexpr int num_samples_d = 5;
 double sampling_d[num_samples_d]; // +1 in case d is not present and needs to be added
 // static int actual_d_samples = 0;
 static const double d_min = -3.0;
@@ -63,7 +66,7 @@ static const double t_max = 3.0;
 // static const double N = 30; //  self.N = int(config_plan.planning.planning_horizon / config_plan.planning.dt)
 static const double dT = 0.1;
 
-static const int num_samples_v = 4;
+static const int num_samples_v = 5;
 double sampling_v[num_samples_v];
 
 dds_entity_t result_writer;
@@ -553,6 +556,26 @@ static bool get_msg(dds_entity_t rd, void * sample)
   return false;
 }
 
+void log_cpu_usage() {
+    static uint64_t prev_cycles = 0;
+    static uint64_t prev_total  = 0;
+
+    struct k_thread_runtime_stats stats {};
+    k_thread_runtime_stats_get(k_current_get(), &stats);
+
+    uint64_t cycles = stats.execution_cycles;
+    uint64_t total_cycles = k_cycle_get_64();
+
+    uint64_t delta_cycles = cycles - prev_cycles;
+    uint64_t delta_total  = total_cycles - prev_total;
+
+    double cpu_util = (double) delta_cycles / (double) delta_total * 100.0;
+    std::cout << "[CPU] Utilization (interval): " << cpu_util << " %" << std::endl;
+
+    prev_cycles = cycles;
+    prev_total  = total_cycles;
+}
+
 template<typename T>
 static void on_msg_dds(dds_entity_t rd, void * arg)
 {
@@ -767,17 +790,35 @@ void on_msg(const BoardInputData& msg) {
   );
 
   auto t_sampling_end = std::chrono::steady_clock::now();
-  double sampling_latency_ms = std::chrono::duration<double, std::milli>(t_sampling_end - t_sampling_start).count();
+  double sampling_latency_ms = std::chrono::duration<double, std::micro>(t_sampling_end - t_sampling_start).count();
 
   TrajectoryHandler trajectory_handler(dT, desired_velocity);
 
-  trajectory_handler.addFillCoordinates(std::make_unique<FillCoordinates>(false, orientation, coordinate_system, 3.0));
+  // 2. Add coordinate fill
+  auto t_fill_start = std::chrono::steady_clock::now();
+  trajectory_handler.addFillCoordinates(
+      std::make_unique<FillCoordinates>(false, orientation, coordinate_system, 3.0));
+  auto t_fill_end = std::chrono::steady_clock::now();
 
+  // 3. Generate trajectories
+  auto t_gen_start = std::chrono::steady_clock::now();
   trajectory_handler.generateTrajectories(sampling_matrix, false);
-    
-  // trajectory_handler.evaluateTrajectory(trajectory_handler.m_trajectories[0]);
+  auto t_gen_end = std::chrono::steady_clock::now();
 
+  // 4. Evaluate trajectories
+  auto t_eval_start = std::chrono::steady_clock::now();
   trajectory_handler.evaluateAllTrajectories();
+  auto t_eval_end = std::chrono::steady_clock::now();
+
+  double fill_ms    = std::chrono::duration<double, std::micro>(t_fill_end - t_fill_start).count();
+  double gen_ms     = std::chrono::duration<double, std::micro>(t_gen_end - t_gen_start).count();
+  double eval_ms    = std::chrono::duration<double, std::micro>(t_eval_end - t_eval_start).count();
+
+  printf("%f,%f,%f,%f\n",
+        sampling_latency_ms/1000,  // or sampling_latency_us if you measured in µs
+        fill_ms/1000,
+        gen_ms/1000,
+        eval_ms/1000);
 
   const uint32_t N = static_cast<uint32_t>(trajectory_handler.m_trajectories.size());
   if (N == 0) {
@@ -833,7 +874,10 @@ void on_msg(const BoardInputData& msg) {
     output_msg.cost._buffer[i]        = t.m_cost;
   }
 
-  output_msg.sampling_latency_ms = sampling_latency_ms;
+  output_msg.sampling_latency_ms = sampling_latency_ms/1000;
+
+  // Log CPU and memory
+  log_cpu_usage();
 
   dds_return_t rc = dds_write(result_writer, &output_msg);
   if (rc != DDS_RETCODE_OK) {
