@@ -1,0 +1,80 @@
+Results for timings_100_samples.csv
+  sample_latency:
+    Min: 4.000
+    Max: 5.000
+    Avg: 4.634
+    Std Deviation: 0.484
+    Jitter: 1.000
+  trajectory_generation_latency:
+    Min: 231.000
+    Max: 232.000
+    Avg: 231.464
+    Std Deviation: 0.501
+    Jitter: 1.000
+  trajectory_evaluation_latency:
+    Min: 1553.000
+    Max: 1710.000
+    Avg: 1620.411
+    Std Deviation: 47.769
+    Jitter: 157.000
+
+Results for timings_12_samples.csv
+  sample_latency:
+    Min: 4.000
+    Max: 5.000
+    Avg: 4.417
+    Std Deviation: 0.495
+    Jitter: 1.000
+  trajectory_generation_latency:
+    Min: 27.000
+    Max: 28.000
+    Avg: 27.951
+    Std Deviation: 0.216
+    Jitter: 1.000
+  trajectory_evaluation_latency:
+    Min: 185.000
+    Max: 212.000
+    Avg: 199.361
+    Std Deviation: 7.860
+    Jitter: 27.000
+
+Results for timings_32_samples.csv
+  sample_latency:
+    Min: 4.000
+    Max: 5.000
+    Avg: 4.514
+    Std Deviation: 0.503
+    Jitter: 1.000
+  trajectory_generation_latency:
+    Min: 74.000
+    Max: 75.000
+    Avg: 74.459
+    Std Deviation: 0.502
+    Jitter: 1.000
+  trajectory_evaluation_latency:
+    Min: 516.000
+    Max: 553.000
+    Avg: 535.730
+    Std Deviation: 10.581
+    Jitter: 37.000
+
+Results for timings_64_samples.csv
+  sample_latency:
+    Min: 4.000
+    Max: 5.000
+    Avg: 4.586
+    Std Deviation: 0.497
+    Jitter: 1.000
+  trajectory_generation_latency:
+    Min: 148.000
+    Max: 149.000
+    Avg: 148.655
+    Std Deviation: 0.479
+    Jitter: 1.000
+  trajectory_evaluation_latency:
+    Min: 987.000
+    Max: 1136.000
+    Avg: 1058.672
+    Std Deviation: 60.679
+    Jitter: 149.000
+
